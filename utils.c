@@ -4,6 +4,24 @@
 #include <stdio.h>
 //#include <ctype.h>
 
+unsigned char isFile =0x8;
+unsigned char isFolder =0x4;
+DIR Dir;
+struct dirent *DirEntry;
+Dir = opendir("c:/test/")
+
+while(Dir=readdir(Dir))
+{
+   if ( DirEntry->d_type == isFile)
+   {
+	cout <<"Found a File : " << DirEntry->d_name << endl;
+   }
+}
+
+
+
+
+
 char* substring(const char* str, size_t begin, size_t len)
 {
   if (str == 0 || strlen(str) == 0 || strlen(str) < begin || strlen(str) < (begin+len))
