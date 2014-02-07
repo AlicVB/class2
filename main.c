@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <sys/stat.h>
 #include "exiv.h"
 #include "structs.h"
 #include "classe.h"
@@ -18,7 +19,6 @@ int get_file_type(char* fn)
   char* ext = (char*) malloc (sizeof (*fn) * (4));
   for (int j = 0; j < 3; j++) ext[j] = tolower(fn[j+strlen(fn)-3]);
   ext[3] = '\0';
-  printf("extension %s -%s-\n",fn,ext);
   if (strcmp(ext,"jpg")==0) return 1;
   if (strcmp(ext,"xmp")==0) return 3;
   if (strstr(";bay;bmq;cr2;crw;cs1;dc2;dcr;dng;erf;fff;hdr;k25;kdc;mdc;mos;mrw;nef;orf;pef;pxn;raf;raw;rdc;sr2;srf;x3f;arw;",ext)) return 2;
@@ -150,7 +150,33 @@ int read_xmp()
   {
     if (!base.files[i]->xmp) continue;
     if (!fileexists(base.files[i]->xmp)) continue;
-    xmp_read_infos(base.files[i]->xmp,base.files[i]->i1,base.files[i]->i2,base.files[i]->i3);
+    xmp_read_infos(base.files[i]->xmp,base.files[i]->i1,base.files[i]->i2,base.files[i]->i3,&base.files[i]->tt);
+  }
+  return 1;
+}
+
+int read_date()
+{
+  for (int i=0; i<base.files_nb; i++)
+  {
+    if (base.files[i]->time_ok) continue;
+    if (fileexists(base.files[i]->raw)) base.files[i]->time_ok = exif_read_date(base.files[i]->raw, &base.files[i]->tt);
+    else if (fileexists(base.files[i]->jpg)) base.files[i]->time_ok = exif_read_date(base.files[i]->jpg, &base.files[i]->tt);
+    //if there's still no date, we use the 'last modified" one
+    if (!base.files[i]->time_ok)
+    {
+      struct stat b;
+      if (fileexists(base.files[i]->raw) && !stat(base.files[i]->raw, &b))
+        memcpy(&base.files[i]->tt, &b.st_mtime, sizeof(time_t));
+      else if (fileexists(base.files[i]->jpg) && !stat(base.files[i]->jpg, &b))
+        memcpy(&base.files[i]->tt, &b.st_mtime, sizeof(time_t));
+      else
+      {
+        time_t n = time(NULL);
+        memcpy(&base.files[i]->tt, &n, sizeof(time_t));
+      }
+      base.files[i]->time_ok = 1;
+    }
   }
   return 1;
 }
@@ -172,15 +198,17 @@ int get_all_infos(int val, char* txt)
     else if (val == 2) tx = base.files[i]->i2;
     else if (val == 3) tx = base.files[i]->i3;
     
-    if (!strstr(res,tx))
+    char tx2[2048];
+    snprintf(tx2,2048,"-%s-",tx);
+    if (!strstr(res,tx2))
     {
       resnb += 1;
       if (resnb > 1)
       {
         strncat(res,"\n",20000);
-        strncat(res,tx,20000);
+        strncat(res,tx2,20000);
       }
-      else snprintf(res,20000,"%s",tx);
+      else snprintf(res,20000,"%s",tx2);
     }
   }
   strncpy(txt,res,20000);
@@ -229,14 +257,16 @@ static void ok_callback(GtkButton *button, char* nu)
         else if (fileexists(base.files[i]->jpg))
           snprintf(base.files[i]->xmp,1024,"%s.xmp",base.files[i]->jpg);
       }
-      xmp_save_infos(base.files[i]->xmp, base.files[i]->i1, base.files[i]->i2, base.files[i]->i3);
+      xmp_save_infos(base.files[i]->xmp, base.files[i]->i1, base.files[i]->i2, base.files[i]->i3, &base.files[i]->tt);
     }
   }
-  gtk_main_quit();
+  if (button) gtk_main_quit();
 }
 
-static void classe_callback(GtkButton *button, char* nu)
+static void classe_callback(GtkButton *button, GtkWidget* Fenetre)
 {
+  ok_callback(NULL,NULL);
+  gtk_widget_hide(Fenetre);
   classe_lance();
 }
 
@@ -257,14 +287,20 @@ int main(int argc,char **argv)
     //for each file, we read xmp datas (if existing)
     read_xmp();
     
+    //for each file, we read the exif date (if existing)
+    read_date();
+    
     //we read the preselection list
     read_preselect();
     
     gtk_init(&argc, &argv);
  
     Fenetre = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    GtkSettings *default_settings = gtk_settings_get_default();
+    g_object_set(default_settings, "gtk-button-images", TRUE, NULL);
     gtk_window_set_title(GTK_WINDOW(Fenetre), "Images tagging");
     gtk_window_set_default_size(GTK_WINDOW(Fenetre), 300, 100);
+    gtk_window_set_icon(GTK_WINDOW(Fenetre), gtk_widget_render_icon(Fenetre,GTK_STOCK_EDIT,GTK_ICON_SIZE_MENU,NULL));
     
     GtkWidget *vbox = gtk_vbox_new(FALSE, 3);
     
@@ -278,51 +314,67 @@ int main(int argc,char **argv)
     Label=gtk_label_new(txt);
     g_object_set(G_OBJECT(Label), "tooltip-text", tt, (char *)NULL);
     gtk_label_set_justify(GTK_LABEL(Label), GTK_JUSTIFY_CENTER);
-    gtk_box_pack_start(GTK_BOX(vbox), Label, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), Label, TRUE, TRUE, 5);
     
     //the first info entry
     Boxinfo = gtk_hbox_new(FALSE, 3);
-    LBinfo = gtk_label_new("info 1");
+    LBinfo = gtk_label_new("    info 1");
     base.TBinfo1 = gtk_entry_new();
     inb = get_all_infos(1,txt);
-    if (inb == 1) gtk_entry_set_text(GTK_ENTRY(base.TBinfo1),txt);
+    if (inb == 1)
+    {
+      char *tx2 = substring(txt,1,strlen(txt)-2);
+      gtk_entry_set_text(GTK_ENTRY(base.TBinfo1),tx2);
+    }
     else if (inb>1) gtk_entry_set_text(GTK_ENTRY(base.TBinfo1),"###-multiple-###");
     g_object_set(G_OBJECT(base.TBinfo1), "tooltip-text", txt, (char *)NULL);
-    gtk_box_pack_start(GTK_BOX(Boxinfo), LBinfo, TRUE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(Boxinfo), base.TBinfo1, TRUE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(Boxinfo), LBinfo, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(Boxinfo), base.TBinfo1, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), Boxinfo, TRUE, FALSE, 0);
     //the first info entry
     Boxinfo = gtk_hbox_new(FALSE, 3);
-    LBinfo = gtk_label_new("info 2");
+    LBinfo = gtk_label_new("    info 2");
     base.TBinfo2 = gtk_entry_new();
     inb = get_all_infos(2,txt);
-    if (inb == 1) gtk_entry_set_text(GTK_ENTRY(base.TBinfo2),txt);
+    if (inb == 1)
+    {
+      char *tx2 = substring(txt,1,strlen(txt)-2);
+      gtk_entry_set_text(GTK_ENTRY(base.TBinfo2),tx2);
+    }
     else if (inb>1) gtk_entry_set_text(GTK_ENTRY(base.TBinfo2),"###-multiple-###");
     g_object_set(G_OBJECT(base.TBinfo2), "tooltip-text", txt, (char *)NULL);
-    gtk_box_pack_start(GTK_BOX(Boxinfo), LBinfo, TRUE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(Boxinfo), base.TBinfo2, TRUE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(Boxinfo), LBinfo, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(Boxinfo), base.TBinfo2, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), Boxinfo, TRUE, FALSE, 0);
     //the first info entry
     Boxinfo = gtk_hbox_new(FALSE, 3);
-    LBinfo = gtk_label_new("info 3");
+    LBinfo = gtk_label_new("    info 3");
     base.TBinfo3 = gtk_entry_new();
     inb = get_all_infos(3,txt);
-    if (inb == 1) gtk_entry_set_text(GTK_ENTRY(base.TBinfo3),txt);
+    if (inb == 1)
+    {
+      char *tx2 = substring(txt,1,strlen(txt)-2);
+      gtk_entry_set_text(GTK_ENTRY(base.TBinfo3),tx2);
+    }
     else if (inb>1) gtk_entry_set_text(GTK_ENTRY(base.TBinfo3),"###-multiple-###");
     g_object_set(G_OBJECT(base.TBinfo3), "tooltip-text", txt, (char *)NULL);
-    gtk_box_pack_start(GTK_BOX(Boxinfo), LBinfo, TRUE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(Boxinfo), base.TBinfo3, TRUE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(Boxinfo), LBinfo, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(Boxinfo), base.TBinfo3, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), Boxinfo, TRUE, FALSE, 0);
     
     //the validation button
-    GtkWidget* BTok = gtk_button_new_with_label("OK");
-    g_signal_connect (G_OBJECT (BTok), "clicked", G_CALLBACK (ok_callback), NULL);
-    gtk_box_pack_start(GTK_BOX(vbox), BTok, FALSE, FALSE, 5);
+    Boxinfo = gtk_hbox_new(FALSE, 3);
+    GtkWidget* BTok = gtk_button_new();
+    gtk_button_set_image(GTK_BUTTON(BTok), gtk_image_new_from_stock(GTK_STOCK_GOTO_BOTTOM,GTK_ICON_SIZE_BUTTON));
+    g_signal_connect (G_OBJECT (BTok), "clicked", G_CALLBACK (classe_callback), Fenetre);
+    gtk_box_pack_start(GTK_BOX(Boxinfo), BTok, FALSE, TRUE, 5);
     
     //the classe button
-    BTok = gtk_button_new_with_label("CLASSE");
-    g_signal_connect (G_OBJECT (BTok), "clicked", G_CALLBACK (classe_callback), NULL);
-    gtk_box_pack_start(GTK_BOX(vbox), BTok, FALSE, TRUE, 10);
+    BTok = gtk_button_new_with_label("OK");
+    gtk_button_set_image(GTK_BUTTON(BTok), gtk_image_new_from_stock(GTK_STOCK_APPLY,GTK_ICON_SIZE_BUTTON));
+    g_signal_connect (G_OBJECT (BTok), "clicked", G_CALLBACK (ok_callback), NULL);
+    gtk_box_pack_start(GTK_BOX(Boxinfo), BTok, TRUE, TRUE, 5);
+    gtk_box_pack_start(GTK_BOX(vbox), Boxinfo, TRUE, FALSE, 5);
     
     gtk_container_add(GTK_CONTAINER(Fenetre), vbox);
     gtk_widget_show_all(Fenetre);

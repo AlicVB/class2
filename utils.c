@@ -1,26 +1,100 @@
 #include <stdlib.h>
-//#include <gtk/gtk.h>
+#include <dirent.h>
 #include <string.h>
 #include <stdio.h>
-//#include <ctype.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
-unsigned char isFile =0x8;
-unsigned char isFolder =0x4;
-DIR Dir;
-struct dirent *DirEntry;
-Dir = opendir("c:/test/")
-
-while(Dir=readdir(Dir))
+int getallfiles(char* dir, char **files, char **plus, int plus_nb)
 {
-   if ( DirEntry->d_type == isFile)
-   {
-	cout <<"Found a File : " << DirEntry->d_name << endl;
-   }
+  unsigned char isFile =0x8;
+  unsigned char isFolder =0x4;
+  DIR *Dir = NULL;
+  struct dirent *DirEntry;
+  Dir = opendir(dir);
+  int nb = 0;
+  
+  if (Dir)
+  {
+    while(DirEntry=readdir(Dir))
+    {
+       if ( DirEntry->d_type == isFile)
+       {
+         strncpy(files[nb],DirEntry->d_name,1024);
+         nb++;
+       }
+    }
+  }
+  
+  //now we look for files inside the "plus"
+  if (!plus) return nb;
+  char dir2[2048]="";
+  snprintf(dir2,2048,"%s",dir);
+
+  for (int i=0; i<plus_nb; i++)
+  {
+    char *pre = strstr(plus[i],dir2);
+    if (pre == plus[i])
+    {
+      char suf[2048]="";
+      strncpy(suf,plus[i]+strlen(dir2),2048);
+      //we just want files
+      if (!strstr(suf,"/"))
+      {
+        strncpy(files[nb],suf,1024);
+        nb++;
+      }
+    }
+  }
+  
+  return nb;
 }
 
+int getalldirs(char* dir, char **dirs, char **plus, int plus_nb)
+{
+  unsigned char isFile =0x8;
+  unsigned char isFolder =0x4;
+  DIR *Dir = NULL;
+  struct dirent *DirEntry;
+  Dir = opendir(dir);
+  int nb = 0;
+  
+  if (Dir)
+  {
+    while(DirEntry=readdir(Dir))
+    {
+       if ( DirEntry->d_type == isFolder)
+       {
+         strncpy(dirs[nb],DirEntry->d_name,1024);
+         nb++;
+       }
+    }
+  }
 
-
-
+  //now we look for files inside the "plus"
+  if (!plus) return nb;
+  char dir2[2048]="";
+  snprintf(dir2,2048,"%s",dir);
+  for (int i=0; i<plus_nb; i++)
+  {
+    char *pre = strstr(plus[i],dir2);
+    if (pre == plus[i])
+    {
+      char suf[2048]="";
+      strncpy(suf,plus[i]+strlen(dir2),2048);
+      //we don't want files
+      char *dd = strstr(suf,"/");
+      if (dd)
+      {
+        strncpy(dirs[nb],suf,strlen(suf)-strlen(dd));
+        nb++;
+      }
+    }
+  }
+  
+  return nb;
+}
 
 char* substring(const char* str, size_t begin, size_t len)
 {
@@ -43,9 +117,9 @@ bool direxists(char* d)
   if (dir)
   {
       closedir(dir);
-      return TRUE;
+      return true;
   }
-  return FALSE;
+  return false;
 }
 
 static void mkdir2(const char *path)
@@ -61,10 +135,46 @@ static void mkdir2(const char *path)
   for(p = opath; *p; p++)
           if(*p == '/') {
                   *p = '\0';
-                  if(access(opath, F_OK))
-                          mkdir(opath, S_IRWXU);
+                  if(access(opath, F_OK)) mkdir(opath, S_IRWXU);
                   *p = '/';
           }
-  if(access(opath, F_OK))         /* if path is not terminated with / */
+  if(access(opath, R_OK))         /* if path is not terminated with / */
           mkdir(opath, S_IRWXU);
+}
+
+static char* get_dir(char* filename)
+{
+  char* f = strrchr(filename,'/');
+  if (!f) return "";
+  return strndup(filename,strlen(filename)-strlen(f));
+}
+
+int file_copy(char* src, char* dest)
+{
+  //we check if the src and dest exists
+  if (!fileexists(src)) return 10;
+  if (fileexists(dest)) return 11;
+  
+  //if the dest directory doen't exist, we create it
+  char* d = get_dir(dest);
+  if (!direxists(d)) mkdir2(d);
+  if (!direxists(d)) return 15;
+  
+  char cmd[2048]="";
+  sprintf( cmd, "/bin/cp -p \'%s\' \'%s\'", src,dest);
+  system( cmd);
+  
+  //we test that the copy has been done
+  if (!fileexists(dest)) return 20;
+  
+  //and that the file sizes are sames
+  struct stat st;
+  stat(src, &st);
+  int size1 = st.st_size;
+  stat(dest, &st);
+  int size2 = st.st_size;
+  
+  if (size1 != size2) return 21;
+  
+  return 1;
 }

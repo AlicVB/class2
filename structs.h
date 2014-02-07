@@ -1,7 +1,8 @@
 #ifndef STRUCTS_H
 #define STRUCTS_H
 
-
+#include <time.h>
+  
 typedef struct cl_file_t
 {
   char jpg[1024];
@@ -16,6 +17,9 @@ typedef struct cl_file_t
   char djpg[1024];
   char draw[1024];
   char dxmp[1024];
+  
+  time_t tt;
+  int time_ok;
 }
 cl_file_t;
 
