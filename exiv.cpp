@@ -37,16 +37,16 @@ int xmp_read_infos(char* f,char* i1,char* i2,char* i3, time_t *tt)
   char isodate[30]="";
   strncpy(isodate,xmpData["Xmp.exif.DateTimeOriginal"].toString().c_str(),30);
   struct tm tm;
-  if (!strptime(isodate,"%Y-%m-%dT%H:%M%S",&tm))
+  if (!strptime(isodate,"%Y-%m-%dT%H:%M:%S",&tm))
   {
     strncpy(isodate,xmpData["Xmp.tiff.DateTime"].toString().c_str(),30);
-    if (!strptime(isodate,"%Y-%m-%dT%H:%M%S",&tm))
+    if (!strptime(isodate,"%Y-%m-%dT%H:%M:%S",&tm))
     {
       strncpy(isodate,xmpData["Xmp.xmp.CreateDate"].toString().c_str(),30);
-      if (!strptime(isodate,"%Y-%m-%dT%H:%M%S",&tm))
+      if (!strptime(isodate,"%Y-%m-%dT%H:%M:%S",&tm))
       {
         strncpy(isodate,xmpData["Xmp.xmp.ModifyDate"].toString().c_str(),30);
-        if (!strptime(isodate,"%Y-%m-%dT%H:%M%S",&tm)) return 1;
+        if (!strptime(isodate,"%Y-%m-%dT%H:%M:%S",&tm)) return 1;
       }
     }
   }
@@ -74,11 +74,52 @@ int xmp_save_infos(char* f, char* i1, char* i2, char* i3, time_t *tt)
     if (i2) xmpData["Xmp.classeimage.info2"] = i2;
     if (i3) xmpData["Xmp.classeimage.info3"] = i3;
 
+	//tags infos
+	char tx[4096] = "lieux|";
+	if (i1)
+	{
+		strncat(tx,i1,1024);
+		strncat(tx,"|",1);
+	}
+	if (i2)
+	{
+		strncat(tx,i2,1024);
+		strncat(tx,"|",1);
+	}
+	if (i3) strncat(tx,i3,1024);
+	xmpData["Xmp.dc.subject"] = tx;
+	if (i1) xmpData["Xmp.dc.subject"] = i1;
+	if (i2) xmpData["Xmp.dc.subject"] = i2;
+	if (i3) xmpData["Xmp.dc.subject"] = i3;
+	
+	//tags date
+	char txx[4096] = "";
+	strftime(txx,1024,"date|%Y|%m %B|",localtime(tt));
+	if (i1)
+	{
+		strncat(txx,i1,1024);
+		strncat(txx,"|",1);
+	}
+	if (i2)
+	{
+		strncat(txx,i2,1024);
+		strncat(txx,"|",1);
+	}
+	if (i3) strncat(txx,i3,1024);
+	xmpData["Xmp.dc.subject"] = txx;
+	char tx3[256] = "";
+	strftime(tx3,256,"%Y",localtime(tt));
+	xmpData["Xmp.dc.subject"] = tx3;
+	char tx4[256] = "";
+	strftime(tx4,256,"%m %B",localtime(tt));
+	xmpData["Xmp.dc.subject"] = tx4;
+	
+    
     // adding date fields
     if (tt)
     {
       char isodate[30]="";
-      strftime(isodate,30,"%Y-%m-%dT%H:%M%S",localtime(tt));
+      strftime(isodate,30,"%Y-%m-%dT%H:%M:%S",localtime(tt));
       
       xmpData["Xmp.xmp.CreateDate"] = isodate;
       xmpData["Xmp.xmp.MetadataDate"] = isodate;
@@ -127,28 +168,28 @@ int exif_read_date(char* f, time_t *tt)
   char isodate[30]="";
   struct tm tm;
   strncpy(isodate,exifData["Exif.Photo.DateTimeOriginal"].toString().c_str(),30);
-  if (strptime(isodate,"%Y:%m:%d %H:%M%S",&tm))
+  if (strptime(isodate,"%Y:%m:%d %H:%M:%S",&tm))
   {
     time_t ttt = mktime(&tm);
     memcpy(tt,&ttt,sizeof(time_t));
     return 1;
   }
   strncpy(isodate,exifData["Exif.Photo.DateTimeDigitized"].toString().c_str(),30);
-  if (strptime(isodate,"%Y:%m:%d %H:%M%S",&tm))
+  if (strptime(isodate,"%Y:%m:%d %H:%M:%S",&tm))
   {
     time_t ttt = mktime(&tm);
     memcpy(tt,&ttt,sizeof(time_t));
     return 1;
   }
   strncpy(isodate,exifData["Exif.Image.DateTimeOriginal"].toString().c_str(),30);
-  if (strptime(isodate,"%Y:%m:%d %H:%M%S",&tm))
+  if (strptime(isodate,"%Y:%m:%d %H:%M:%S",&tm))
   {
     time_t ttt = mktime(&tm);
     memcpy(tt,&ttt,sizeof(time_t));
     return 1;
   }
   strncpy(isodate,exifData["Exif.Image.DateTime"].toString().c_str(),30);
-  if (strptime(isodate,"%Y:%m:%d %H:%M%S",&tm))
+  if (strptime(isodate,"%Y:%m:%d %H:%M:%S",&tm))
   {
     time_t ttt = mktime(&tm);
     memcpy(tt,&ttt,sizeof(time_t));

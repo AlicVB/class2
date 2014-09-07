@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <unistd.h>
+#include <glib.h>
 #include "classe.h"
 #include "utils.h"
 #include "exiv.h"
@@ -171,6 +173,7 @@ int get_num(char *res, char **files, int *nbf, char **dirs, int *nbd, char *p1, 
       
       //we get all the subdirs inside the dir
       char **ff = (char**) malloc(4096*sizeof(char*));
+      memset(ff,0,4096*sizeof(char*));
       for (int i=0; i<4096; i++)
       {
         ff[i] = (char*) malloc(512*sizeof(char));
@@ -182,17 +185,17 @@ int get_num(char *res, char **files, int *nbf, char **dirs, int *nbd, char *p1, 
       for (int i=0; i<nbff; i++)
       {
         //does the dir start with prefix ?
-        if (strstr(ff[i],pre) == ff[i])
+        if (strstr(ff[i],pre+1) == ff[i])
         {
           //is there a number with 'digit' digits after that ?
           char txt[9] = "";
-          strncpy(txt,ff[i]+strlen(pre),digit);
+          if (strlen(pre)+digit < strlen(ff[i])) strncpy(txt,ff[i]+strlen(pre)-1,digit);
           int n = atoi(txt);
           if (n > 0)
           {
             //is the end of the dos the same ?
             char fin2[1024];
-            strncpy(fin2,ff[i]+strlen(pre)+digit,1024);
+            strncpy(fin2,ff[i]+strlen(pre)-1+digit,1024);
             if (strcmp(fin2,findos)==0)
             {
               nb = n;
@@ -204,6 +207,8 @@ int get_num(char *res, char **files, int *nbf, char **dirs, int *nbd, char *p1, 
           }
         }
       }
+      for (int i=0; i<4096; i++) free(ff[i]);
+      free(ff);
     }
     else //this is a file
     {
@@ -211,9 +216,10 @@ int get_num(char *res, char **files, int *nbf, char **dirs, int *nbd, char *p1, 
       char *pre = strrchr(p1,'/');
       char dd[2048] = "";
       strncpy(dd,p1,strlen(p1)-strlen(pre)+1);
-      
+
       //we get all the files inside the dir
       char **ff = (char**) malloc(4096*sizeof(char*));
+      memset(ff,0,4096*sizeof(char*));
       for (int i=0; i<4096; i++)
       {
         ff[i] = (char*) malloc(512*sizeof(char));
@@ -228,11 +234,14 @@ int get_num(char *res, char **files, int *nbf, char **dirs, int *nbd, char *p1, 
         if (strstr(ff[i],pre+1) == ff[i])
         {
           char txt[9] = "";
-          if (strlen(pre)+digit < strlen(ff[i])) strncpy(txt,ff[i]+strlen(pre),digit);
+          if (strlen(pre)+digit < strlen(ff[i])) strncpy(txt,ff[i]+strlen(pre)-1,digit);
           int n = atoi(txt);
           if (nb < n + 1) nb = n+1;
         }
       }
+
+      for (int i=0; i<4096; i++) free(ff[i]);
+      free(ff);
     }
     //and we add the number in text with 00...
     char tx1[5];
@@ -266,7 +275,6 @@ int calc_dest(cl_file_t* f, char *pattern, char **files, int *nbf, char **dirs, 
   }
   
   //we add the filename and the foldername to the "plus" tables
-  
   strncpy(files[*nbf],np,512);
   *nbf += 1;
   char *fn = strrchr(np,'/');
@@ -314,6 +322,14 @@ int calc_dests(char* pattern)
     calc_dest(base.files[i],pattern,files,&nbf,dirs,&nbd);
   }
   
+  for (int i=0; i<4096; i++)
+  {
+    free(files[i]);
+    free(dirs[i]);
+  }
+  free(files);
+  free(dirs);
+  
   return 1;
 }
 
@@ -350,29 +366,60 @@ void save_pattern(char* pattern)
 {
   //we read all existing pattern and compare them to the actual one
   FILE* fp = NULL;
+  FILE* fp2 = NULL;
   char chaine[2048] = "";
-  sprintf(chaine,"%s/class2/",g_get_user_config_dir());
+  char patt[2048] = "";
+  sprintf(patt,"%s/class2/",g_get_user_config_dir());
   struct stat st = {0};
-  if (stat(chaine, &st) == -1) mkdir(chaine, 0700);
-  sprintf(chaine,"%s/class2/patterns.txt",g_get_user_config_dir());
-  fp = fopen(chaine, "a+");
-  int nb = 0;
-  if (fp)
+  if (stat(patt, &st) == -1) mkdir(patt, 0700);
+  sprintf(patt,"%s/class2/patterns.txt",g_get_user_config_dir());
+  
+  //we create the table for the patterns
+  char tp[512][512];
+  strncpy(tp[0],pattern,512);
+  int nb = 1;
+  if (fileexists(patt))
   {
-    fseek (fp, 0, SEEK_SET);
-    while (fgets(chaine, 2048, fp))
+    //we read it
+    fp = fopen(patt, "r");
+    if (fp)
     {
-      if (strcmp(chaine,pattern)==0)
+      while (fgets(chaine, 2048, fp))
       {
-        //we have nothing to do
-        fclose(fp);
-        return;
+        char* ch2 = substring(chaine,0,strlen(chaine)-1);
+        if (strcmp(ch2,"") != 0)
+        {
+          //we ensure it's not already in the table
+          int already=0;
+          for (int i=0; i<nb; i++)
+          {
+            if (strcmp(tp[i],ch2)==0)
+            {
+              already=1;
+              break;
+            }
+          }
+          if (already == 0)
+          {
+            strncpy(tp[nb],ch2,512);
+            nb++;
+          }
+        }
       }
+      fclose(fp);
     }
-    //if we are here, that mean that we have to save the new pattern
-    fputs(pattern, fp);
-    fputs("\n", fp);
-    fclose(fp);
+  }
+  
+  //we write all the patterns
+  fp2 = fopen(patt, "w+");
+  if (fp2)
+  {
+    for (int i=0; i<nb; i++)
+    {
+      fputs(tp[i], fp2);
+      fputs("\n", fp2);
+    }
+    fclose(fp2);
   }
 }
 
@@ -467,8 +514,10 @@ static bool is_video(char* fn)
   char* ext = (char*) malloc (sizeof (*fn) * (4));
   for (int j = 0; j < 3; j++) ext[j] = tolower(fn[j+strlen(fn)-3]);
   ext[3] = '\0';
-  if (strstr(";avi;mov;mpg;flv;mp4;",ext)) return TRUE;
-  return FALSE;
+  bool rep = FALSE;
+  if (strstr(";avi;mov;mpg;flv;mp4;",ext)) rep=TRUE;
+  free(ext);
+  return rep;
 }
 
 static void classe_videos()
@@ -490,6 +539,7 @@ static void classe_videos()
   Dir = opendir(dd);
   int nb = 0;
   char **videos = (char**) malloc(4096*sizeof(char*));
+  for (int i=0; i<4096; i++) videos[i] = (char*) malloc(1024*sizeof(char));
   
   if (Dir)
   {
@@ -519,7 +569,12 @@ static void classe_videos()
                                   nb,dd,ddd);
   gint result = gtk_dialog_run (GTK_DIALOG (dialog));
   gtk_widget_destroy (dialog);
-  if (result == GTK_RESPONSE_NO) return;
+  if (result == GTK_RESPONSE_NO)
+  {
+    for (int i=0; i<4096; i++) free(videos[i]);
+    free(videos);
+    return;
+  }
   
   //do the copy
   for (int i=0 ; i<nb ; i++)
@@ -535,6 +590,8 @@ static void classe_videos()
                                   "Videos copy done !");
   gtk_dialog_run (GTK_DIALOG (dialog));
   gtk_widget_destroy (dialog);
+  for (int i=0; i<4096; i++) free(videos[i]);
+  free(videos);
 }
 
 static void classe_callback(GtkButton *button, GtkWidget* vbox)
@@ -542,7 +599,7 @@ static void classe_callback(GtkButton *button, GtkWidget* vbox)
   //we get all the differents widgets
   GList* wl = gtk_container_get_children(GTK_CONTAINER(vbox));
   GtkWidget* Combo = (GtkWidget*) g_list_nth_data(wl,0);
-  GtkWidget* pb = (GtkWidget*) g_list_nth_data(wl,2);
+  GtkWidget* pb = (GtkWidget*) g_list_nth_data(wl,3);
   
   //we save the pattern if it's a new one
   char* pattern = (char*) gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(Combo));
@@ -618,17 +675,20 @@ static void classe_callback(GtkButton *button, GtkWidget* vbox)
     
     //we write xmp tags
     xmp_save_infos(base.files[i]->dxmp,base.files[i]->i1,base.files[i]->i2,base.files[i]->i3,&base.files[i]->tt);
-    
+
     //we update the progressbar
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(pb),(double)(i+1)/(double)base.files_nb);
     while (gtk_events_pending ()) gtk_main_iteration ();
+    
   }
   
   //if there's some errors, we show them. Otherwise, we show a success window
   gtk_widget_destroy(gtk_widget_get_toplevel(vbox));
   classe_validation(err,errpos);
+  free(err);
   
   //if there's some videos in the same directory, we ask what to do with them
+  classe_videos();
 }
 
 int classe_lance()

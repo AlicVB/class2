@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <gio/gio.h>
 
 int getallfiles(char* dir, char **files, char **plus, int plus_nb)
 {
@@ -21,7 +22,7 @@ int getallfiles(char* dir, char **files, char **plus, int plus_nb)
     {
        if ( DirEntry->d_type == isFile)
        {
-         strncpy(files[nb],DirEntry->d_name,1024);
+         strncpy(files[nb],DirEntry->d_name,512);
          nb++;
        }
     }
@@ -42,7 +43,7 @@ int getallfiles(char* dir, char **files, char **plus, int plus_nb)
       //we just want files
       if (!strstr(suf,"/"))
       {
-        strncpy(files[nb],suf,1024);
+        strncpy(files[nb],suf,512);
         nb++;
       }
     }
@@ -66,7 +67,7 @@ int getalldirs(char* dir, char **dirs, char **plus, int plus_nb)
     {
        if ( DirEntry->d_type == isFolder)
        {
-         strncpy(dirs[nb],DirEntry->d_name,1024);
+         strncpy(dirs[nb],DirEntry->d_name,512);
          nb++;
        }
     }
@@ -145,9 +146,18 @@ static void mkdir2(const char *path)
 static char* get_dir(char* filename)
 {
   char* f = strrchr(filename,'/');
-  if (!f) return "";
+  if (!f) return '\0';
   return strndup(filename,strlen(filename)-strlen(f));
 }
+
+/*void copy_progress(goffset current_num_bytes, goffset total_num_bytes, gpointer user_data)
+{
+  if (current_num_bytes >= total_num_bytes)
+  {
+    
+  }
+}
+*/
 
 int file_copy(char* src, char* dest)
 {
@@ -160,11 +170,14 @@ int file_copy(char* src, char* dest)
   if (!direxists(d)) mkdir2(d);
   if (!direxists(d)) return 15;
   
-  char cmd[2048]="";
-  sprintf( cmd, "/bin/cp -p \'%s\' \'%s\'", src,dest);
-  system( cmd);
+  bool rep = g_file_copy (g_file_new_for_path (src), g_file_new_for_path (dest), G_FILE_COPY_ALL_METADATA, NULL, NULL, NULL, NULL);
+  
+  //char cmd[2048]="";
+  //sprintf( cmd, "/bin/cp -p \'%s\' \'%s\'", src,dest);
+  //system( cmd);
   
   //we test that the copy has been done
+  if (!rep) return 22;
   if (!fileexists(dest)) return 20;
   
   //and that the file sizes are sames
