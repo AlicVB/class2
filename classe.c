@@ -654,6 +654,7 @@ static void classe_callback(GtkButton *button, GtkWidget* vbox)
     }
     
     //we copy the xmp file
+    /* We never copy the file to avoid duplicate tags in dc.subject
     if (fileexists(base.files[i]->xmp))
     {
       int rep = file_copy(base.files[i]->xmp,base.files[i]->dxmp);
@@ -671,7 +672,7 @@ static void classe_callback(GtkButton *button, GtkWidget* vbox)
         strncat(err,"\n\n",100000-errpos);
         errpos += 2;
       }
-    }
+    }*/
     
     //we write xmp tags
     xmp_save_infos(base.files[i]->dxmp,base.files[i]->i1,base.files[i]->i2,base.files[i]->i3,&base.files[i]->tt);
